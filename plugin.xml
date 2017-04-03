@@ -18,10 +18,19 @@
       <config-file target="config.xml" parent="/*">
         <feature name="HttpRequester">
           <param name="ios-package" value="HttpRequester"/>
+          <param name="onload" value="true" />
         </feature>
       </config-file>
 
+      <framework src="libsqlite3.0.tbd" />
+
       <header-file src="src/ios/HttpRequester.h" />
       <source-file src="src/ios/HttpRequester.m" />
+      <header-file src="src/ios/HTTPRequestOperation.h" />
+      <source-file src="src/ios/HTTPRequestOperation.m" />
+      <header-file src="src/ios/HTTPRequestOperationData.h" />
+      <source-file src="src/ios/HTTPRequestOperationData.m" />
+      <header-file src="src/ios/HTTPRequestOperationManager.h" />
+      <source-file src="src/ios/HTTPRequestOperationManager.m" />
     </platform>
 </plugin>
