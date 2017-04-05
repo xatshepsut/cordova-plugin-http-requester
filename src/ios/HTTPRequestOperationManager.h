@@ -20,4 +20,7 @@
 - (void)addOperationWithRequest:(NSURLRequest * _Nonnull)request completionHandler:(void (^ _Nonnull)(BOOL added))handler;
 - (void)setNetworkActivityIndicatorVisible:(BOOL)visible;
 
+// IMPORTANT: This should be called only from background fetch
+- (void)dobakcgroundFetchWithOldestRequest:(void (^ _Nonnull)(UIBackgroundFetchResult result))handler;
+
 @end

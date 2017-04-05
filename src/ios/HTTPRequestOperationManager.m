@@ -8,12 +8,30 @@
 #import "HTTPRequestOperationManager.h"
 #import "HTTPRequestOperationData.h"
 #import "HTTPRequestOperation.h"
+
+#import "AppDelegate.h"
 #import <sqlite3.h>
 
 //#define ENABLE_LOGGING
 
 int const QUEUE_CAPACITY = 1000;
 NSString * const DB_FILENAME = @"http_operations.db";
+
+
+@implementation AppDelegate(BackgroundFetch)
+
+-(void)application:(UIApplication *)application performFetchWithCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
+#ifdef ENABLE_LOGGING
+  NSLog(@"HTTPRequestOperationManager: Performing background fetch");
+#endif
+  [[HTTPRequestOperationManager sharedInstance] dobakcgroundFetchWithOldestRequest:^(UIBackgroundFetchResult result) {
+    completionHandler(result);
+  }];
+}
+
+@end
+
+#pragma mark -
 
 
 @interface HTTPRequestOperationManager () <HTTPRequestOperationDelegate>
@@ -43,6 +61,8 @@ NSString * const DB_FILENAME = @"http_operations.db";
   self = [super init];
 
   if (self) {
+    [[UIApplication sharedApplication] setMinimumBackgroundFetchInterval:UIApplicationBackgroundFetchIntervalMinimum];
+
     NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
     [config setHTTPMaximumConnectionsPerHost:1];
     _session = [NSURLSession sessionWithConfiguration:config];
@@ -66,6 +86,36 @@ NSString * const DB_FILENAME = @"http_operations.db";
     HTTPRequestOperation *operation = [[HTTPRequestOperation alloc] initWithOperationData:data];
     [operation setDelegate:self];
     [_httpRequestQueue addOperation:operation];
+  }
+}
+
+- (void)dobakcgroundFetchWithOldestRequest:(void (^)(UIBackgroundFetchResult result))handler {
+  // IMPORTANT: This should be called only from background fetch
+  // Reuqest is directly fetched from DB without going through queue
+
+  // Do nothing, if by any chance queue is populated
+  if ([_httpRequestQueue operationCount] > 0) {
+    handler(UIBackgroundFetchResultNoData);
+    return;
+  }
+
+  HTTPRequestOperationData *operationData = [self retrieveOldestOperationData];
+  if (operationData && operationData.request) {
+    [[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:YES];
+
+    [[_session dataTaskWithRequest:operationData.request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+      [[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:NO];
+      NSInteger statusCode = [(NSHTTPURLResponse *)response statusCode];
+
+      if (error || ((statusCode / 100) != 2)) {
+        handler(UIBackgroundFetchResultFailed);
+      } else {
+        BOOL success = [self deleteOperationDataWithIdentifier:operationData.identifier];
+        handler(success ? UIBackgroundFetchResultNewData : UIBackgroundFetchResultFailed);
+      }
+    }] resume];
+  } else {
+    handler(UIBackgroundFetchResultNoData);
   }
 }
 
@@ -199,6 +249,25 @@ NSString * const DB_FILENAME = @"http_operations.db";
   if (sqlite3_prepare_v2(_database, query, -1, &statement, nil) == SQLITE_OK) {
     sqlite3_bind_text(statement, 1, [identifier UTF8String], -1, nil);
 
+    if (sqlite3_step(statement) == SQLITE_ROW) {
+      result = [self parseOperationDataFromStatement:statement];
+    }
+  } else {
+#ifdef ENABLE_LOGGING
+    NSLog(@"HTTPRequestOperationManager: Failed to compile database query with error: %@", [NSString stringWithUTF8String:sqlite3_errmsg(_database)]);
+#endif
+  }
+
+  sqlite3_finalize(statement);
+  return result;
+}
+
+- (HTTPRequestOperationData *)retrieveOldestOperationData {
+  HTTPRequestOperationData *result;
+  sqlite3_stmt *statement;
+  const char *query = "SELECT * FROM Operations ORDER BY date(timestamp) ASC LIMIT 1;";
+
+  if (sqlite3_prepare_v2(_database, query, -1, &statement, nil) == SQLITE_OK) {
     if (sqlite3_step(statement) == SQLITE_ROW) {
       result = [self parseOperationDataFromStatement:statement];
     }

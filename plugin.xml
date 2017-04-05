@@ -15,6 +15,13 @@
     </js-module>
 
     <platform name="ios">
+
+      <config-file target="*-Info.plist" parent="UIBackgroundModes">
+        <array>
+          <string>fetch</string>
+        </array>
+      </config-file>
+
       <config-file target="config.xml" parent="/*">
         <feature name="HttpRequester">
           <param name="ios-package" value="HttpRequester"/>
@@ -32,5 +39,6 @@
       <source-file src="src/ios/HTTPRequestOperationData.m" />
       <header-file src="src/ios/HTTPRequestOperationManager.h" />
       <source-file src="src/ios/HTTPRequestOperationManager.m" />
+
     </platform>
 </plugin>
