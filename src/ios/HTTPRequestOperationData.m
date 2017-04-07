@@ -16,18 +16,20 @@
     data.identifier = [self uuid];
     data.timestamp = [self timestamp];
     data.request = request;
+    data.retryCounter = 0;
   }
 
   return data;
 }
 
-+ (instancetype)dataWithIdentifier:(NSString *)identifier timestamp:(NSString *)timestamp request:(NSURLRequest *)request {
++ (instancetype)dataWithIdentifier:(NSString *)identifier timestamp:(NSString *)timestamp request:(NSURLRequest *)request retryCounter:(NSInteger)counter {
   HTTPRequestOperationData *data = [[HTTPRequestOperationData alloc] init];
 
   if (data) {
     data.identifier = identifier;
     data.timestamp = timestamp;
     data.request = request;
+    data.retryCounter = counter;
   }
 
   return data;

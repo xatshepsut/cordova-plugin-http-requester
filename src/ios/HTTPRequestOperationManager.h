@@ -8,6 +8,7 @@
 #import <Foundation/Foundation.h>
 
 @class HTTPRequestOperation;
+@class Connectability;
 
 @interface HTTPRequestOperationManager : NSObject
 
@@ -21,6 +22,6 @@
 - (void)setNetworkActivityIndicatorVisible:(BOOL)visible;
 
 // IMPORTANT: This should be called only from background fetch
-- (void)dobakcgroundFetchWithOldestRequest:(void (^ _Nonnull)(UIBackgroundFetchResult result))handler;
+- (void)makeBakcgroundFetchWithOldestRequest:(void (^ _Nonnull)(UIBackgroundFetchResult result))handler;
 
 @end

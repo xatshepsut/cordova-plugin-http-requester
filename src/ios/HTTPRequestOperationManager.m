@@ -10,11 +10,13 @@
 #import "HTTPRequestOperation.h"
 
 #import "AppDelegate.h"
+#import "Connectability.h"
 #import <sqlite3.h>
 
 //#define ENABLE_LOGGING
 
 int const QUEUE_CAPACITY = 1000;
+int const OPERATION_RETRY_LIMIT = 5;
 NSString * const DB_FILENAME = @"http_operations.db";
 
 
@@ -24,7 +26,7 @@ NSString * const DB_FILENAME = @"http_operations.db";
 #ifdef ENABLE_LOGGING
   NSLog(@"HTTPRequestOperationManager: Performing background fetch");
 #endif
-  [[HTTPRequestOperationManager sharedInstance] dobakcgroundFetchWithOldestRequest:^(UIBackgroundFetchResult result) {
+  [[HTTPRequestOperationManager sharedInstance] makeBakcgroundFetchWithOldestRequest:^(UIBackgroundFetchResult result) {
     completionHandler(result);
   }];
 }
@@ -41,6 +43,8 @@ NSString * const DB_FILENAME = @"http_operations.db";
 @property (nonatomic, strong) NSOperationQueue *httpRequestQueue;
 @property (nonatomic, strong) NSOperationQueue *dbWriteRequestQueue;
 @property (nonatomic, strong) NSTimer *networkActivityIndicatorTimer;
+@property (nonatomic, strong) Connectability *connectability;
+@property (nonatomic, strong) HTTPRequestOperation *failedOperation;
 
 @end
 
@@ -61,8 +65,6 @@ NSString * const DB_FILENAME = @"http_operations.db";
   self = [super init];
 
   if (self) {
-    [[UIApplication sharedApplication] setMinimumBackgroundFetchInterval:UIApplicationBackgroundFetchIntervalMinimum];
-
     NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
     [config setHTTPMaximumConnectionsPerHost:1];
     _session = [NSURLSession sessionWithConfiguration:config];
@@ -74,9 +76,19 @@ NSString * const DB_FILENAME = @"http_operations.db";
     [_dbWriteRequestQueue setMaxConcurrentOperationCount:1];
 
     [self openDatabase];
+
+    [[UIApplication sharedApplication] setMinimumBackgroundFetchInterval:UIApplicationBackgroundFetchIntervalMinimum];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(checkConnection:) name:kReachabilityChangedNotification object:nil];
+    _connectability = [Connectability reachabilityForInternetConnection];
+    [_connectability startNotifier];
   }
 
   return self;
+}
+
+- (void)dealloc {
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (void)populateQueueWithPendingRequests {
@@ -89,7 +101,7 @@ NSString * const DB_FILENAME = @"http_operations.db";
   }
 }
 
-- (void)dobakcgroundFetchWithOldestRequest:(void (^)(UIBackgroundFetchResult result))handler {
+- (void)makeBakcgroundFetchWithOldestRequest:(void (^)(UIBackgroundFetchResult result))handler {
   // IMPORTANT: This should be called only from background fetch
   // Reuqest is directly fetched from DB without going through queue
 
@@ -101,19 +113,24 @@ NSString * const DB_FILENAME = @"http_operations.db";
 
   HTTPRequestOperationData *operationData = [self retrieveOldestOperationData];
   if (operationData && operationData.request) {
-    [[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:YES];
+    if (operationData.retryCounter < OPERATION_RETRY_LIMIT) {
+      [[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:YES];
 
-    [[_session dataTaskWithRequest:operationData.request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-      [[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:NO];
-      NSInteger statusCode = [(NSHTTPURLResponse *)response statusCode];
+      [[_session dataTaskWithRequest:operationData.request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        [[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:NO];
+        NSInteger statusCode = [(NSHTTPURLResponse *)response statusCode];
 
-      if (error || ((statusCode / 100) != 2)) {
-        handler(UIBackgroundFetchResultFailed);
-      } else {
-        BOOL success = [self deleteOperationDataWithIdentifier:operationData.identifier];
-        handler(success ? UIBackgroundFetchResultNewData : UIBackgroundFetchResultFailed);
-      }
-    }] resume];
+        if (error || ((statusCode / 100) != 2)) {
+          handler(UIBackgroundFetchResultFailed);
+        } else {
+          BOOL success = [self deleteOperationDataWithIdentifier:operationData.identifier];
+          handler(success ? UIBackgroundFetchResultNewData : UIBackgroundFetchResultFailed);
+        }
+      }] resume];
+    } else {
+      BOOL success = [self deleteOperationDataWithIdentifier:operationData.identifier];
+      handler(success ? UIBackgroundFetchResultNewData : UIBackgroundFetchResultFailed);
+    }
   } else {
     handler(UIBackgroundFetchResultNoData);
   }
@@ -141,13 +158,51 @@ NSString * const DB_FILENAME = @"http_operations.db";
 
 #pragma mark - HTTPRequestOperationDelegate
 
-- (void)finsihedOperationWithIdentifier:(NSString *)identifier {
+- (void)finishedOperation:(HTTPRequestOperation *)operation {
   NSBlockOperation *dbOperation = [NSBlockOperation blockOperationWithBlock:^{
-    [self deleteOperationDataWithIdentifier:identifier];
+    [self deleteOperationDataWithIdentifier:operation.identifier];
   }];
 
   [_dbWriteRequestQueue addOperation:dbOperation];
   [dbOperation waitUntilFinished];
+}
+
+- (void)failedOperation:(HTTPRequestOperation *)operation withError:(NSError *)error {
+  if ([_connectability currentReachabilityStatus] == NotReachable) {
+    _failedOperation = operation;
+  } else {
+    if (operation.retryCounter >= OPERATION_RETRY_LIMIT) {
+      [operation cancel];
+      return;
+    }
+
+    [operation incrementRetryCounter];
+
+    NSBlockOperation *dbOperation = [NSBlockOperation blockOperationWithBlock:^{
+      [self updateOperationDataWithIdentifier:operation.identifier retryValue:operation.retryCounter];
+    }];
+
+    [_dbWriteRequestQueue addOperation:dbOperation];
+    [dbOperation waitUntilFinished];
+
+    [operation retry];
+  }
+}
+
+#pragma mark - Connectibility
+
+- (void)checkConnection:(NSNotification *)notification {
+  NetworkStatus connectionStatus = [(Connectability *)[notification object] currentReachabilityStatus];
+
+  if (connectionStatus == NotReachable) {
+    // Do nothing
+    // Current operation will fail, queue is serial so it will be halted
+  } else {
+    if (_failedOperation) {
+      [_failedOperation retry];
+      _failedOperation = nil;
+    }
+  }
 }
 
 #pragma mark - Activity Indicator
@@ -192,7 +247,8 @@ NSString * const DB_FILENAME = @"http_operations.db";
   const char *query = "CREATE TABLE Operations( \
                                   id CHAR(50) PRIMARY KEY NOT NULL, \
                                   timestamp CHAR(50), \
-                                  request BLOB);";
+                                  request BLOB, \
+                                  counter INTEGER DEFAULT 0);";
 
   if (sqlite3_prepare_v2(_database, query, -1, &statement, nil) == SQLITE_OK) {
     if (sqlite3_step(statement) == SQLITE_DONE) {
@@ -303,6 +359,32 @@ NSString * const DB_FILENAME = @"http_operations.db";
   return results;
 }
 
+- (BOOL)updateOperationDataWithIdentifier:(NSString *)identifier retryValue:(NSInteger)counter {
+  BOOL result = NO;
+  sqlite3_stmt *statement;
+  const char *query = "UPDATE Operations SET counter=? WHERE id=?;";
+
+  if (sqlite3_prepare_v2(_database, query, -1, &statement, nil) == SQLITE_OK) {
+    sqlite3_bind_text(statement, 1, [[NSString stringWithFormat:@"%ld", (long)counter] UTF8String], -1, nil);
+    sqlite3_bind_text(statement, 2, [identifier UTF8String], -1, nil);
+
+    if (sqlite3_step(statement) == SQLITE_DONE) {
+      result = YES;
+    } else {
+#ifdef ENABLE_LOGGING
+      NSLog(@"HTTPRequestOperationManager: Failed to update operation data id-%@ from database with error: %@", identifier, [NSString stringWithUTF8String:sqlite3_errmsg(_database)]);
+#endif
+    }
+  } else {
+#ifdef ENABLE_LOGGING
+    NSLog(@"HTTPRequestOperationManager: Failed to compile database query with error: %@", [NSString stringWithUTF8String:sqlite3_errmsg(_database)]);
+#endif
+  }
+
+  sqlite3_finalize(statement);
+  return result;
+}
+
 - (BOOL)deleteOperationDataWithIdentifier:(NSString *)identifier {
   BOOL result = NO;
   sqlite3_stmt *statement;
@@ -363,12 +445,14 @@ NSString * const DB_FILENAME = @"http_operations.db";
   const void *requestRaw = sqlite3_column_blob(statement, 2);
   int size = sqlite3_column_bytes(statement, 2);
 
+  int counterRaw = sqlite3_column_int(statement, 3);
+
   if (requestRaw) {
     NSData *data = [[NSData alloc] initWithBytes:requestRaw length:size];
     NSURLRequest *request = [NSKeyedUnarchiver unarchiveObjectWithData:data];
 
     if (request) {
-      result = [HTTPRequestOperationData dataWithIdentifier:identifier timestamp:timestamp request:request];
+      result = [HTTPRequestOperationData dataWithIdentifier:identifier timestamp:timestamp request:request retryCounter:counterRaw];
     }
   }
 

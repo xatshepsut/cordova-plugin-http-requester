@@ -33,12 +33,16 @@
 
       <header-file src="src/ios/HttpRequester.h" />
       <source-file src="src/ios/HttpRequester.m" />
+      
       <header-file src="src/ios/HTTPRequestOperation.h" />
       <source-file src="src/ios/HTTPRequestOperation.m" />
       <header-file src="src/ios/HTTPRequestOperationData.h" />
       <source-file src="src/ios/HTTPRequestOperationData.m" />
       <header-file src="src/ios/HTTPRequestOperationManager.h" />
       <source-file src="src/ios/HTTPRequestOperationManager.m" />
+
+      <header-file src="src/ios/Connectability/Connectability.h" />
+      <source-file src="src/ios/Connectability/Connectability.m" />
 
     </platform>
 </plugin>

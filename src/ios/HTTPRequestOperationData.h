@@ -12,8 +12,9 @@
 @property (nonatomic, strong, nonnull) NSString *identifier;
 @property (nonatomic, strong, nonnull) NSString *timestamp;
 @property (nonatomic, strong, nonnull) NSURLRequest *request;
+@property (nonatomic, assign) NSInteger retryCounter;
 
 + (instancetype _Nonnull)dataWithRequest:(NSURLRequest * _Nonnull)request;
-+ (instancetype _Nonnull)dataWithIdentifier:(NSString * _Nonnull)identifier timestamp:(NSString * _Nonnull)timestamp request:(NSURLRequest * _Nonnull)request;
++ (instancetype _Nonnull)dataWithIdentifier:(NSString * _Nonnull)identifier timestamp:(NSString * _Nonnull)timestamp request:(NSURLRequest * _Nonnull)request retryCounter:(NSInteger)counter;
 
 @end
