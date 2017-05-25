@@ -26,11 +26,22 @@
 
 - (void)post:(CDVInvokedUrlCommand *)command {
   _callbackId = command.callbackId;
-  NSDictionary *params = [command.arguments objectAtIndex: 0];
 
-  dispatch_async( dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-    NSURLRequest *request = [self postRequestWithParams:params];
+  NSDictionary *params = [command.arguments objectAtIndex:0];
+  NSURLRequest *request = [self createRequestWithParams:params andMethod:@"POST"];
+  [self queueRequest:request];
+}
 
+- (void)put:(CDVInvokedUrlCommand *)command {
+  _callbackId = command.callbackId;
+
+  NSDictionary *params = [command.arguments objectAtIndex:0];
+  NSURLRequest *request = [self createRequestWithParams:params andMethod:@"PUT"];
+  [self queueRequest:request];
+}
+
+- (void)queueRequest:(NSURLRequest *)request {
+  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
     [[HTTPRequestOperationManager sharedInstance] addOperationWithRequest:request completionHandler:^(BOOL added) {
       dispatch_async( dispatch_get_main_queue(), ^{
         if (added) {
@@ -45,12 +56,12 @@
   });
 }
 
-- (NSURLRequest *)postRequestWithParams:(NSDictionary *)params {
+- (NSURLRequest *)createRequestWithParams:(NSDictionary *)params andMethod:(NSString *)method {
   NSString *urlString = [params objectForKey:@"url"];
   NSURL *url = [NSURL URLWithString:urlString];
 
   NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
-  [request setHTTPMethod:@"POST"];
+  [request setHTTPMethod:method];
   [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
 
   NSDictionary *body = [params objectForKey:@"body"];

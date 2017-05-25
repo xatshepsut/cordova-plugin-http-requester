@@ -10,6 +10,7 @@
 @interface HttpRequester : CDVPlugin
 
 - (void)post:(CDVInvokedUrlCommand *)command;
+- (void)put:(CDVInvokedUrlCommand *)command;
 
 
 @end
