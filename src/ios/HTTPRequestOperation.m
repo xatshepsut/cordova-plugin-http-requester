@@ -66,7 +66,11 @@
   NSLog(@"HTTPRequestOperation: Executing operation with id \"%@\"", _data.identifier);
 #endif
 
-  _task = [[[HTTPRequestOperationManager sharedInstance] session] dataTaskWithRequest:_data.request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+  NSMutableURLRequest *request = [_data.request mutableCopy];
+  NSString *timestamp = [HTTPRequestOperationData timestamp:@"EEE, dd MMM yyyy HH:mm:ss 'GMT'"];
+  [request setValue:timestamp forHTTPHeaderField:@"Date"];
+
+  _task = [[[HTTPRequestOperationManager sharedInstance] session] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
     dispatch_async(dispatch_get_main_queue(), ^{
       [[HTTPRequestOperationManager sharedInstance] setNetworkActivityIndicatorVisible:NO];
     });

@@ -14,7 +14,7 @@
 
   if (data) {
     data.identifier = [self uuid];
-    data.timestamp = [self timestamp];
+    data.timestamp = [self timestamp:@"yyyy-MM-dd'T'HH:mm:ssZZZZZ"];
     data.request = request;
     data.retryCounter = 0;
   }
@@ -35,9 +35,10 @@
   return data;
 }
 
-+ (NSString *)timestamp {
++ (NSString *)timestamp:(NSString *)format {
   NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
-  [dateFormatter setDateFormat:@"yyyy-MM-dd'T'HH:mm:ssZZZZZ"];
+  [dateFormatter setTimeZone:[NSTimeZone timeZoneWithAbbreviation:@"UTC"]];
+  [dateFormatter setDateFormat:format];
   return [dateFormatter stringFromDate:[NSDate date]];
 }
 

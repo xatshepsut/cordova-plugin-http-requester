@@ -17,4 +17,7 @@
 + (instancetype _Nonnull)dataWithRequest:(NSURLRequest * _Nonnull)request;
 + (instancetype _Nonnull)dataWithIdentifier:(NSString * _Nonnull)identifier timestamp:(NSString * _Nonnull)timestamp request:(NSURLRequest * _Nonnull)request retryCounter:(NSInteger)counter;
 
++ (NSString *)timestamp:(NSString *)format;
++ (NSString *)uuid;
+
 @end
