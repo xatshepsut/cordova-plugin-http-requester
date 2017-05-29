@@ -214,9 +214,9 @@ NSString * const DB_FILENAME = @"http_operations.db";
   if (visible) {
     [[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:YES];
   } else {
-    _networkActivityIndicatorTimer = [NSTimer scheduledTimerWithTimeInterval:1.3 repeats:NO block:^(NSTimer * timer) {
+    _networkActivityIndicatorTimer = [NSTimer scheduledTimerWithTimeInterval:1.3 target:[NSBlockOperation blockOperationWithBlock:^{
       [[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:visible];
-    }];
+    }] selector:@selector(main) userInfo:nil repeats:NO];
   }
 }
 
